@@ -1,18 +1,24 @@
 package Study.SpringSecurity.controller.login;
 
+import Study.SpringSecurity.constants.SecurityConstants;
 import Study.SpringSecurity.controller.login.dto.login.LoginDto;
+import Study.SpringSecurity.controller.login.dto.login.TokenDto;
 import Study.SpringSecurity.entity.Member;
 import Study.SpringSecurity.repository.MemberRepository;
 import Study.SpringSecurity.service.LoginService;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @RestController
@@ -21,6 +27,7 @@ public class LoginController {
 
     private final LoginService loginService;
     private final MemberRepository memberRepository;
+    private final TokenManager tokenManager;
 
     @PostMapping("/register")
     public ResponseEntity<String> registerUser(@RequestBody LoginDto dto){
@@ -65,7 +72,17 @@ public class LoginController {
     }
 
     @RequestMapping("/user")
-    public Member getUserDetailsAfterLogin(Authentication authentication) {
-        return loginService.orElseGetMember(authentication.getName());
+    public TokenDto getUserDetailsAfterLogin() {
+        TokenDto token = tokenManager.getToken();
+        tokenManager.removeToken(); // 반드시 지울 것
+
+        return token;
+    }
+
+    @GetMapping("/reissue")
+    public TokenDto reIssueToken(){
+        TokenDto token = tokenManager.getToken();
+        tokenManager.removeToken();
+        return token;
     }
 }

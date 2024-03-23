@@ -1,7 +1,9 @@
 package Study.SpringSecurity.config;
 
+import Study.SpringSecurity.controller.login.TokenManager;
 import Study.SpringSecurity.filter.*;
 import Study.SpringSecurity.repository.MemberRepository;
+import Study.SpringSecurity.repository.SessionRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -30,15 +32,19 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final TokenManager tokenManager;
+    private final MemberRepository memberRepository;
+    private final SessionRepository sessionRepository;
+
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf((csrf) -> csrf.disable())
                 .authorizeHttpRequests((requests) -> requests
                         .requestMatchers("/security", "/user", "/book/**").authenticated()
-                        .requestMatchers("/register").permitAll())
-                .addFilterAfter(new JWTTokenGeneratorFilter(), BasicAuthenticationFilter.class)
-                .addFilterBefore(new JWTTokenValidatorFilter(), BasicAuthenticationFilter.class)
+                        .requestMatchers("/register", "/reissue").permitAll())
+                .addFilterAfter(new JWTTokenGeneratorFilter(tokenManager, sessionRepository), BasicAuthenticationFilter.class)
+                .addFilterBefore(new JWTTokenValidatorFilter(tokenManager, memberRepository, sessionRepository), BasicAuthenticationFilter.class)
                 .formLogin(Customizer.withDefaults())
                 .httpBasic(Customizer.withDefaults());
 
