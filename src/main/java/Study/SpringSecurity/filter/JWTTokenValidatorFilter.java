@@ -8,6 +8,7 @@ import Study.SpringSecurity.entity.Member;
 import Study.SpringSecurity.entity.Session;
 import Study.SpringSecurity.repository.MemberRepository;
 import Study.SpringSecurity.repository.SessionRepository;
+import Study.SpringSecurity.service.LoginService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
@@ -16,6 +17,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -46,16 +48,13 @@ public class JWTTokenValidatorFilter extends OncePerRequestFilter {
 
         if (null != jwt && !request.getRequestURI().equals("/reissue")) {
             try {
-                Claims claims = Jwts.parser()
-                        .verifyWith(key)
-                        .build()
-                        .parseSignedClaims(jwt)
-                        .getPayload();
+                Claims claims = getClaims(key, jwt);
 
                 String username = String.valueOf(claims.get("username"));
                 String authorities = (String) claims.get("authorities");
                 Authentication auth = new UsernamePasswordAuthenticationToken(username, null,
                         AuthorityUtils.commaSeparatedStringToAuthorityList(authorities));
+
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (Exception e) {
                 throw new BadCredentialsException("Invalid Token received!");
@@ -63,55 +62,47 @@ public class JWTTokenValidatorFilter extends OncePerRequestFilter {
 
         } else if(null != jwt && request.getRequestURI().equals("/reissue")){
             try {
-                //처리법이 생각이 안나....
-                Claims claims = Jwts.parser().build()
-                        .parseClaims.getPayload();
 
-                String uuid = String.valueOf(claims.get("UUID"));
+                /**
+                 * 만료 시간 지났을 시 BadCredentialException
+                 * -> 프엔에게 해당 에러코드시 login 화면으로 가라 혹은 리다이렉션 헤더 채워주면 됨
+                  */
+                Claims claims = getClaims(key, jwt);
+
                 String username = String.valueOf(claims.get("username"));
-                Session session = sessionRepository.findBySession(uuid);
+                Session findSession = sessionRepository.findByUsername(username);
 
-                Date date = new Date();
-                // 만료 시 재로그인 요청
-                if(claims.getExpiration().after(date)){
-
-                    if(session != null){
-                        sessionRepository.delete(session);
-                    }
-
+                // 블랙리스트 등록의 경우는 토큰 재발급 요청
+                if(findSession.getBlackStatus() == Boolean.TRUE){
                     throw new BadCredentialsException("Please Login Again");
                 }
 
-                // 내부 세션이 없는 경우도 재로그인 요청
-                if(session == null){
+                // 최신 발급 내용과 다른 경우도 토큰 재발급 요청
+                if(!findSession.getSession().equals(jwt)){
                     throw new BadCredentialsException("Please Login Again");
                 }
 
-                // 세션이 있는 경우 토큰 재발급
-                Member findMember = memberRepository.findByUserEmail(username);
+                // 로그인 상태인데 리프레시 토큰 만료 안되고 엑세스 토큰만 만료됐을시 재발급
+                // 바로 get해도 되는 이유는 없으면 BadCredential이고 있으면 원래 로직대로 돼서 상관없음.
+                Member findMember = memberRepository.findByUserEmailWithAuthorities(username).get();
+                Authentication auth = new UsernamePasswordAuthenticationToken(username, null,
+                        AuthorityUtils.commaSeparatedStringToAuthorityList(populateAuthorities(findMember.getAuthorities())));
 
-                String accessToken = Jwts.builder().issuer("Recfli").subject("JWT Token")
-                        .claim("username", findMember.getUsername())
-                        .claim("authorities", findMember.getAuthorities())
-                        .issuedAt(new Date())
-                        .expiration(new Date((new Date()).getTime() + 1800*1000))
-                        .signWith(key).compact();
-
-                UUID newUUID = UUID.randomUUID();
-                String refreshToken = Jwts.builder()
-                        .claim("UUID", newUUID)
-                        .claim("username", findMember.getUsername())
-                        .issuedAt(new Date())
-                        .expiration(new Date((new Date()).getTime() + 10000))
-                        .compact();
-                // 3600*1000*24*7
-                tokenManager.setToken(accessToken, refreshToken);
-
+                SecurityContextHolder.getContext().setAuthentication(auth);
             }  catch (Exception e) {
                 throw new BadCredentialsException("Invalid Token received!", e);
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private static Claims getClaims(SecretKey key, String jwt) {
+        Claims claims = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(jwt)
+                .getPayload();
+        return claims;
     }
 
     @Override

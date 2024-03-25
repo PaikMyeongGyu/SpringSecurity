@@ -41,9 +41,9 @@ public class SecurityConfig {
         http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf((csrf) -> csrf.disable())
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/security", "/user", "/book/**").authenticated()
+                        .requestMatchers("/user", "/security", "/book/**", "/login/**").authenticated()
                         .requestMatchers("/register", "/reissue").permitAll())
-                .addFilterAfter(new JWTTokenGeneratorFilter(tokenManager, sessionRepository), BasicAuthenticationFilter.class)
+                .addFilterAfter(new JWTTokenGeneratorFilter(tokenManager), BasicAuthenticationFilter.class)
                 .addFilterBefore(new JWTTokenValidatorFilter(tokenManager, memberRepository, sessionRepository), BasicAuthenticationFilter.class)
                 .formLogin(Customizer.withDefaults())
                 .httpBasic(Customizer.withDefaults());

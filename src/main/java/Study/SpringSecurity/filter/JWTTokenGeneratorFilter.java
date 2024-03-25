@@ -27,7 +27,6 @@ import java.util.*;
 public class JWTTokenGeneratorFilter extends OncePerRequestFilter {
 
     private final TokenManager tokenManager;
-    private final SessionRepository sessionRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -36,6 +35,7 @@ public class JWTTokenGeneratorFilter extends OncePerRequestFilter {
 
         if (null != authentication) {
             SecretKey key = Keys.hmacShaKeyFor(SecurityConstants.JWT_KEY.getBytes(StandardCharsets.UTF_8));
+
             String accessToken = Jwts.builder().issuer("Recfli").subject("JWT Token")
                     .claim("username", authentication.getName())
                     .claim("authorities", populateAuthorities(authentication.getAuthorities()))
@@ -43,25 +43,14 @@ public class JWTTokenGeneratorFilter extends OncePerRequestFilter {
                     .expiration(new Date((new Date()).getTime() + 1800*1000))
                     .signWith(key).compact();
 
-            String newUUID = UUID.randomUUID().toString();
-
+            String uuid = UUID.randomUUID().toString();
             String refreshToken = Jwts.builder()
-                    .claim("UUID", newUUID)
+                    .claim("username", authentication.getName())
+                    .claim("session", uuid)
                     .issuedAt(new Date())
-                    .expiration(new Date((new Date()).getTime() + 10000))
-                    .compact();
+                    .expiration(new Date((new Date()).getTime() + 3600*1000*24*7))
+                    .signWith(key).compact();
 
-            Session findSession = sessionRepository.findByUsername(authentication.getName());
-
-            // Optional을 사용해보는 걸 생각해보자.
-            if(sessionRepository.findByUsername(authentication.getName()) != null){
-                sessionRepository.delete(findSession);
-            }
-
-            Session session = new Session(newUUID, authentication.getName());
-            sessionRepository.save(session);
-
-            // 3600*1000*24*7
             tokenManager.setToken(accessToken, refreshToken);
         }
 
